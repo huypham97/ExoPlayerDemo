@@ -11,7 +11,7 @@ class NotifyActivity : AppCompatActivity() {
         setContentView(R.layout.activity_notify)
 
         val timerService = Intent(this, TimerService::class.java)
-        timerService.putExtra(TimerService.UPCOMING_CLASS_TIME, 100L)
+        timerService.putExtra(TimerService.UPCOMING_CLASS_TIME, 20L)
         startService(timerService)
     }
 }

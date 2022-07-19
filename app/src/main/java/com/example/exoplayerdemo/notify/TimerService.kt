@@ -18,10 +18,11 @@ class TimerService : Service() {
         const val UPCOMING_CLASS_TIME = "UPCOMING_CLASS_TIME"
     }
 
+    private var upcomingTime: Long? = 0L
     private lateinit var notificationManager: NotificationManager
     private var startTimer = Timer()
     private var updateTimer = Timer()
-    private var timeElapsed: Int = 0
+    private var timeElapsed: Long = 0
     private var isFirstTime = true
 
     override fun onCreate() {
@@ -36,7 +37,7 @@ class TimerService : Service() {
         createChannel()
         getNotificationManager()
 
-        val upcomingTime = intent?.getLongExtra(UPCOMING_CLASS_TIME, 0)!!
+        upcomingTime = intent?.getLongExtra(UPCOMING_CLASS_TIME, 0)
 
         if (isFirstTime) {
             handleForeground()
@@ -50,7 +51,7 @@ class TimerService : Service() {
         startTimer = Timer()
         startTimer.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
-                timeElapsed = Calendar.getInstance().timeInMillis.toInt()
+                timeElapsed = Calendar.getInstance().timeInMillis
             }
         }, 0, 1000)
     }
@@ -84,7 +85,12 @@ class TimerService : Service() {
         updateTimer.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 timeElapsed++
-                updateNotification()
+                upcomingTime?.let {
+                    if (it - timeElapsed == 5L || it - timeElapsed == 10L || it - timeElapsed == 15L)
+                        updateNotification()
+                    else if (it - timeElapsed == 0L)
+                        stopSelf()
+                }
             }
         }, 0, 1000)
     }
