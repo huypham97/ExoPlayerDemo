@@ -21,21 +21,20 @@ class NotifyActivity : AppCompatActivity() {
 //        startService(timerService)
 
         button.setOnClickListener {
-            setAlarm(0, 6 * 1000)
-            setAlarm(1, 10 * 1000)
+            setAlarm(0, 4000)
         }
 
     }
 
-    private fun setAlarm(id: Int, long: Long) {
+    private fun setAlarm(id: Int, time: Long) {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(this, AlarmBroadcast::class.java)
         intent.putExtra(AlarmBroadcast.NOTIFY_ID, id)
         val pendingIntent =
             PendingIntent.getBroadcast(this, id, intent, 0)
-        alarmManager.set(
+        alarmManager.setExact(
             AlarmManager.RTC_WAKEUP,
-            SystemClock.elapsedRealtime() + long,
+            System.currentTimeMillis() + time,
             pendingIntent
         )/*
         alarmManager.setExact(

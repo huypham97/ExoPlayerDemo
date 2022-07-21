@@ -65,7 +65,7 @@ class AlarmBroadcast : BroadcastReceiver() {
         val content = "Học sinh ${notifyId + 1}"
 
         val intent = Intent(context, NotifyActivity::class.java)
-        val pIntent = PendingIntent.getActivity(context, -1, intent, PendingIntent.FLAG_ONE_SHOT)
+        val pIntent = PendingIntent.getActivity(context, 1, intent, PendingIntent.FLAG_ONE_SHOT)
 
         return NotificationCompat.Builder(context, TimerService.CHANNEL_ID)
             .setContentTitle(title)
