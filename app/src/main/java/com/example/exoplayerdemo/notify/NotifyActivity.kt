@@ -22,6 +22,8 @@ class NotifyActivity : AppCompatActivity() {
 
         button.setOnClickListener {
             setAlarm(0, 4000)
+            setAlarm(1, 6000)
+            setAlarm(2, 8000)
         }
 
     }

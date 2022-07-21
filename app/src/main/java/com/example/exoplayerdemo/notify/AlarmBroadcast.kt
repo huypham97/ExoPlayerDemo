@@ -69,7 +69,7 @@ class AlarmBroadcast : BroadcastReceiver() {
 
         return NotificationCompat.Builder(context, TimerService.CHANNEL_ID)
             .setContentTitle(title)
-            .setOngoing(true)
+            .setOngoing(false)
             .setContentText(content)
             .setColorized(true)
             .setColor(Color.parseColor("#BEAEE2"))
