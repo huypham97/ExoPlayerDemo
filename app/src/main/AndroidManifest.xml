@@ -18,6 +18,15 @@
         android:theme="@style/Theme.ExoPlayerDemo"
         tools:targetApi="31">
         <activity
+            android:name=".SeekbarActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
             android:name=".MainActivity"
             android:exported="false" />
         <activity
@@ -29,8 +38,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service android:name=".notify.TimerService"
+
+        <service
+            android:name=".notify.TimerService"
             android:enabled="true" />
+
         <receiver android:name=".notify.AlarmBroadcast" />
     </application>
 
