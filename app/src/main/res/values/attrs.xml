@@ -39,5 +39,11 @@
         <attr name="isb_show_tick_texts" format="boolean" />
         <attr name="isb_tick_texts_color" format="reference|color" />
         <attr name="isb_tick_texts_size" format="dimension|reference" />
+        <attr name="isb_tick_texts_typeface">
+            <enum name="normal" value="0" />
+            <enum name="monospace" value="1" />
+            <enum name="sans" value="2" />
+            <enum name="serif" value="3" />
+        </attr>
     </declare-styleable>
 </resources>
