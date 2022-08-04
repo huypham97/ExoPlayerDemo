@@ -5,9 +5,13 @@ import android.graphics.*
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
+import androidx.annotation.ColorInt
+import androidx.annotation.NonNull
 import com.example.exoplayerdemo.R
 import com.example.exoplayerdemo.utils.SizeUtils
+import java.math.BigDecimal
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -45,6 +49,7 @@ class IndicatorSeekBar : View {
     private var mIndicatorTextSize: Int = 0
     private var mIndicatorTextColor: Int = 0
     private var mThumbColor: Int = 0
+    private var mPressedThumbColor: Int = 0
     private var mShowTickMarksType: Int = 0
     private var mSelectedTickMarksColor: Int = 0
     private var mUnSelectedTickMarksColor: Int = 0
@@ -69,12 +74,19 @@ class IndicatorSeekBar : View {
     private var mSeekLength: Float = 0F
     private var mSeekBlockLength: Float = 0F
     private var mTickTextY: Float = 0F
-    private var mTickTextsArr = arrayOf<String>()
+    private var mTickTextsArr: Array<String?>? = null
     private var mTickTextsCustomArray: CharSequence? = null
     private var mSelectTickMarksBitmap: Bitmap? = null
     private var mUnselectTickMarksBitmap: Bitmap? = null
     private var mThumbBitmap: Bitmap? = null
     private var mPressedThumbBitmap: Bitmap? = null
+    private var mIsTouching: Boolean = false
+    private var mFaultTolerance: Float = -1F
+    private var mScale: Int = 1
+    private var mIndicatorStayAlways: Boolean = true
+
+    private var mSeekChangeListener: OnSeekChangeListener? = null
+    private var mSeekParams: SeekParams? = null
 
     constructor(context: Context?) : super(context)
 
@@ -111,6 +123,57 @@ class IndicatorSeekBar : View {
             drawTickTexts(it)
             drawThumb(it)
         }
+    }
+
+    override fun setEnabled(enabled: Boolean) {
+        if (enabled == isEnabled) return
+        super.setEnabled(enabled)
+        alpha = if (isEnabled) {
+            1.0F
+        } else {
+            0.3F
+        }
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        post { requestLayout() }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
+        val parent = parent ?: return super.dispatchTouchEvent(event)
+        when (event?.action) {
+            MotionEvent.ACTION_DOWN -> parent.requestDisallowInterceptTouchEvent(true)
+            MotionEvent.ACTION_UP or MotionEvent.ACTION_CANCEL -> parent.requestDisallowInterceptTouchEvent(
+                false
+            )
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+        if (!isEnabled) return false
+        when (event?.action) {
+            MotionEvent.ACTION_DOWN -> {
+                performClick()
+                val mX = event.x
+                if (isTouchSeekBar(mX, event.y)) {
+                    if (mOnlyThumbDraggable && !isTouchThumb(mX)) return false
+                    mIsTouching = true
+                    mSeekChangeListener?.onStartTrackingTouch(this@IndicatorSeekBar)
+                    refreshSeekBar(event)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                refreshSeekBar(event)
+            }
+            MotionEvent.ACTION_UP or MotionEvent.ACTION_CANCEL -> {
+                mIsTouching = false
+                mSeekChangeListener?.onStopTrackingTouch(this)
+            }
+        }
+        return super.onTouchEvent(event)
     }
 
     private fun initAttrs(attrs: AttributeSet?) {
@@ -154,8 +217,12 @@ class IndicatorSeekBar : View {
             )
             mThumbDrawable = it.getDrawable(R.styleable.IndicatorSeekBar_isb_thumb_drawable)
             mAdjustAuto = it.getBoolean(R.styleable.IndicatorSeekBar_isb_thumb_adjust_auto, true)
-            mThumbColor =
-                it.getColor(R.styleable.IndicatorSeekBar_isb_thumb_color, builder.thumbColor)
+            initThumbColor(
+                it.getColor(
+                    R.styleable.IndicatorSeekBar_isb_thumb_color,
+                    builder.thumbColor
+                )
+            )
             mTicksCount = it.getInt(R.styleable.IndicatorSeekBar_isb_ticks_count, builder.tickCount)
             mShowTickMarksType = it.getInt(
                 R.styleable.IndicatorSeekBar_isb_show_tick_marks_type,
@@ -239,7 +306,12 @@ class IndicatorSeekBar : View {
         initDefaultPadding()
     }
 
-    private fun initTickMarksColor(color: Int) {
+    private fun initThumbColor(@ColorInt color: Int) {
+        mThumbColor = color
+        mPressedThumbColor = mThumbColor
+    }
+
+    private fun initTickMarksColor(@ColorInt color: Int) {
         mSelectedTickMarksColor = color
         mUnSelectedTickMarksColor = mSelectedTickMarksColor
     }
@@ -381,10 +453,11 @@ class IndicatorSeekBar : View {
 
     private fun initTextsArray() {
         if (mTicksCount == 0) return
+        mTickTextsArr = arrayOfNulls(mTicksCount)
         for (i in 0 until mTickMarksX!!.size) {
             if (mShowTickText) {
-                mTickTextsArr[i] = getTickTextByPosition(i)
-                mTextPaint.getTextBounds(mTickTextsArr[i], 0, mTickTextsArr[i].length, mRect)
+                mTickTextsArr!![i] = if (i % 2 == 0) getTickTextByPosition(i) else ""
+                mTextPaint.getTextBounds(mTickTextsArr!![i], 0, mTickTextsArr!![i]!!.length, mRect)
                 mTickTextsWidth!![i] = mRect.width().toFloat()
                 mTextCenterX!![i] = mPaddingLeft + mSeekBlockLength * i
             }
@@ -430,7 +503,7 @@ class IndicatorSeekBar : View {
             mProgressTrack.bottom,
             mStockPaint
         )
-        mStockPaint.color = mProgressTrackColor
+        mStockPaint.color = mBackgroundTrackColor
         mStockPaint.strokeWidth = mBackgroundTrackSize.toFloat()
         canvas.drawLine(
             mBackgroundTrack.left,
@@ -535,9 +608,9 @@ class IndicatorSeekBar : View {
     private fun getRightSideTrackSize(): Int = mBackgroundTrackSize
 
     private fun drawTickTexts(canvas: Canvas) {
-        if (mTickTextsArr.isEmpty()) return
+        if (mTickTextsArr!!.isEmpty()) return
         val thumbPosFloat = getThumbPosOnTickFloat()
-        for (i in mTickTextsArr.indices) {
+        for (i in mTickTextsArr!!.indices) {
             if (i == getThumbPosOnTick() && i == thumbPosFloat.toInt()) {
                 mTextPaint.color = mHoveredTextColor
             } else if (i < thumbPosFloat) {
@@ -548,22 +621,22 @@ class IndicatorSeekBar : View {
             when (i) {
                 0 -> {
                     canvas.drawText(
-                        mTickTextsArr[i],
+                        mTickTextsArr!![i]!!,
                         mTextCenterX!![i] + mTickTextsWidth!![i] / 2F,
                         mTickTextY,
                         mTextPaint
                     )
                 }
-                mTickTextsArr.size - 1 -> {
+                mTickTextsArr!!.size - 1 -> {
                     canvas.drawText(
-                        mTickTextsArr[i],
+                        mTickTextsArr!![i]!!,
                         mTextCenterX!![i] - mTickTextsWidth!![i] / 2.0F,
                         mTickTextY,
                         mTextPaint
                     )
                 }
                 else -> {
-                    canvas.drawText(mTickTextsArr[i], mTextCenterX!![i], mTickTextY, mTextPaint)
+                    canvas.drawText(mTickTextsArr!![i]!!, mTextCenterX!![i], mTickTextY, mTextPaint)
                 }
             }
         }
@@ -579,7 +652,168 @@ class IndicatorSeekBar : View {
             if (mThumbBitmap == null || mPressedThumbBitmap == null) {
                 initThumbBitmap()
             }
+            if (mThumbBitmap == null || mPressedThumbBitmap == null)
+                throw IllegalArgumentException("the format of the selector thumb drawable is wrong!")
+            mStockPaint.alpha = 255
+            if (mIsTouching) {
+                canvas.drawBitmap(
+                    mPressedThumbBitmap!!,
+                    thumbCenterX - mPressedThumbBitmap!!.width / 2F,
+                    mProgressTrack.top - mPressedThumbBitmap!!.height / 2F,
+                    mStockPaint
+                )
+            } else {
+                canvas.drawBitmap(
+                    mThumbBitmap!!,
+                    thumbCenterX - mThumbBitmap!!.width / 2F,
+                    mProgressTrack.top - mThumbBitmap!!.height / 2F,
+                    mStockPaint
+                )
+            }
+        } else {
+            if (mIsTouching) {
+                mStockPaint.color = mPressedThumbColor
+            } else {
+                mStockPaint.color = mThumbColor
+            }
+            canvas.drawCircle(
+                thumbCenterX,
+                mProgressTrack.top,
+                if (mIsTouching) mThumbTouchRadius else mThumbRadius,
+                mStockPaint
+            )
         }
+    }
+
+    private fun initThumbBitmap() {
+        if (mThumbBitmap == null) return
+        mThumbBitmap = mThumbDrawable?.let { getDrawBitmap(it, true) }
+        mPressedThumbBitmap = mThumbBitmap
+    }
+
+    private fun getDrawBitmap(drawable: Drawable, isThumb: Boolean): Bitmap {
+        var width: Int
+        var height: Int
+        val maxRange = SizeUtils.dp2px(context, THUMB_MAX_WIDTH.toFloat())
+        val intrinsicWidth = drawable.intrinsicWidth
+        if (intrinsicWidth > maxRange) {
+            width = if (isThumb) {
+                mThumbSize
+            } else {
+                mTickMarksSize
+            }
+            height = getHeightByRatio(drawable, width)
+
+            if (width > maxRange) {
+                width = maxRange
+                height = getHeightByRatio(drawable, width)
+            }
+        } else {
+            width = drawable.intrinsicWidth
+            height = drawable.intrinsicHeight
+        }
+
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
+    }
+
+    private fun getHeightByRatio(drawable: Drawable, width: Int): Int {
+        val intrinsicWidth = drawable.intrinsicWidth
+        val intrinsicHeight = drawable.intrinsicHeight
+        return (1.0f * width * intrinsicHeight / intrinsicWidth).roundToInt()
+    }
+
+    private fun isTouchSeekBar(mX: Float, mY: Float): Boolean {
+        if (mFaultTolerance == -1F) {
+            mFaultTolerance = SizeUtils.dp2px(context, 5F).toFloat()
+        }
+        val inWidthRange =
+            mX >= (mPaddingLeft - 2 * mFaultTolerance) && mX <= (mMeasuredWidth - mPaddingRight + 2 * mFaultTolerance)
+        val inHeightRange =
+            mY >= mProgressTrack.top - mThumbTouchRadius - mFaultTolerance && mY <= mProgressTrack.top + mThumbTouchRadius + mFaultTolerance
+        return inWidthRange && inHeightRange
+    }
+
+    private fun isTouchThumb(mX: Float): Boolean {
+        refreshThumbCenterXByProgress(mProgress)
+        val rawTouchX = mProgressTrack.right
+        return rawTouchX - mThumbSize / 2F <= mX && mX <= rawTouchX + mThumbSize / 2F
+    }
+
+    fun setOnSeekChangeListener(@NonNull listener: OnSeekChangeListener) {
+        mSeekChangeListener = listener
+    }
+
+    private fun refreshSeekBar(event: MotionEvent) {
+        refreshThumbCenterXByProgress(calculateProgress(calculateTouchX(adjustTouchX(event))))
+        setSeekListener(true)
+        invalidate()
+        updateIndicator()
+    }
+
+    private fun calculateProgress(touchX: Float): Float {
+        lastProgress = mProgress
+        mProgress = mMin + (getAmplitude() * (touchX - mPaddingLeft)) / mSeekLength
+        return mProgress
+    }
+
+    private fun calculateTouchX(touchX: Float): Float {
+        return when {
+            mTicksCount > 2 -> mSeekBlockLength * ((touchX - mPaddingLeft) / mSeekBlockLength).roundToInt() + mPaddingLeft
+            else -> touchX
+        }
+    }
+
+    private fun adjustTouchX(event: MotionEvent): Float {
+        return when {
+            event.x < mPaddingLeft -> mPaddingLeft.toFloat()
+            event.x > mMeasuredWidth - mPaddingRight -> (mMeasuredWidth - mPaddingRight).toFloat()
+            else -> event.x
+        }
+    }
+
+    private fun setSeekListener(fromUser: Boolean) {
+        mSeekChangeListener?.onSeeking(collectParams(fromUser)) ?: return
+    }
+
+    private fun collectParams(fromUser: Boolean): SeekParams {
+        if (mSeekParams == null)
+            mSeekParams = SeekParams(this).apply {
+                this.progress = getProgress()
+                this.progressFloat = getProgressFloat()
+                this.fromUser = fromUser
+            }
+        if (mTicksCount > 2) {
+            val rawThumbPos = getThumbPosOnTick()
+            if (mShowTickText && !mTickTextsArr.isNullOrEmpty()) {
+                mSeekParams!!.tickText = mTickTextsArr!![rawThumbPos]
+            }
+            mSeekParams!!.thumbPosition = rawThumbPos
+        }
+        return mSeekParams!!
+    }
+
+    private fun getProgress() = mProgress.roundToInt()
+
+    @Synchronized
+    fun getProgressFloat(): Float {
+        val bigDecimal = BigDecimal.valueOf(mProgress.toDouble())
+        return bigDecimal.setScale(mScale, BigDecimal.ROUND_HALF_UP).toFloat()
+    }
+
+    private fun updateIndicator() {
+        if (mIndicatorStayAlways) {
+            updateStayIndicator()
+        } else {
+
+        }
+    }
+
+    private fun updateStayIndicator() {
+
     }
 
     private fun applyBuilder(builder: IndicatorSeekBarBuilder) {
