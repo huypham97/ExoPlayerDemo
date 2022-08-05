@@ -1,8 +1,10 @@
 package com.example.exoplayerdemo.seekbar
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.*
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.StateListDrawable
 import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -74,7 +76,7 @@ class IndicatorSeekBar : View {
     private var mSeekLength: Float = 0F
     private var mSeekBlockLength: Float = 0F
     private var mTickTextY: Float = 0F
-    private var mTickTextsArr: Array<String?>? = null
+    private var mTickTextsArr: Array<Indicator?>? = null
     private var mTickTextsCustomArray: CharSequence? = null
     private var mSelectTickMarksBitmap: Bitmap? = null
     private var mUnselectTickMarksBitmap: Bitmap? = null
@@ -84,6 +86,9 @@ class IndicatorSeekBar : View {
     private var mFaultTolerance: Float = -1F
     private var mScale: Int = 1
     private var mIndicatorStayAlways: Boolean = true
+    private var mSelectedTickMarksOddColor: Int = 0
+    private var mUnSelectedTickMarksOddColor: Int = 0
+    private var mTickMarksOddDrawable: Drawable? = null
 
     private var mSeekChangeListener: OnSeekChangeListener? = null
     private var mSeekParams: SeekParams? = null
@@ -249,10 +254,8 @@ class IndicatorSeekBar : View {
                 builder.tickTextsSize
             )
             initTickTextsColor(
-                it.getColor(
-                    R.styleable.IndicatorSeekBar_isb_tick_texts_color,
-                    builder.tickTextsColor
-                )
+                it.getColorStateList(R.styleable.IndicatorSeekBar_isb_tick_texts_color),
+                builder.tickTextsColor
             )
             initTextsTypeface(
                 it.getInt(R.styleable.IndicatorSeekBar_isb_tick_texts_typeface, -1),
@@ -274,6 +277,15 @@ class IndicatorSeekBar : View {
                 R.styleable.IndicatorSeekBar_isb_indicator_text_color,
                 builder.indicatorTextColor
             )
+            initTickMarksOddColor(
+                it.getColor(
+                    R.styleable.IndicatorSeekBar_isb_tick_marks_odd_color,
+                    builder.tickMarksOddColor
+                )
+            )
+            mTickMarksOddDrawable =
+                it.getDrawable(R.styleable.IndicatorSeekBar_isb_tick_marks_odd_drawable)
+            mTickMarksOddDrawable?.let { mTickMarksDrawable = it }
         }
         typeArray.recycle()
     }
@@ -316,10 +328,59 @@ class IndicatorSeekBar : View {
         mUnSelectedTickMarksColor = mSelectedTickMarksColor
     }
 
-    private fun initTickTextsColor(color: Int) {
-        mUnselectedTextsColor = color
-        mSelectedTextsColor = mUnselectedTextsColor
-        mHoveredTextColor = mUnselectedTextsColor
+    private fun initTickMarksOddColor(@ColorInt color: Int) {
+        mSelectedTickMarksOddColor = color
+        mUnSelectedTickMarksOddColor = mSelectedTickMarksOddColor
+    }
+
+    private fun initTickTextsColor(colorStateList: ColorStateList?, defaultColor: Int) {
+        if (colorStateList == null) {
+            mUnselectedTextsColor = defaultColor
+            mSelectedTextsColor = mUnselectedTextsColor
+            mHoveredTextColor = mUnselectedTextsColor
+            return
+        }
+        var states: Array<IntArray>? = null
+        var colors: IntArray? = null
+        val aClass: Class<out ColorStateList?> = colorStateList.javaClass
+        try {
+            val f = aClass.declaredFields
+            for (field in f) {
+                field.isAccessible = true
+                if ("mStateSpecs" == field.name) {
+                    states = field[colorStateList] as Array<IntArray>
+                }
+                if ("mColors" == field.name) {
+                    colors = field[colorStateList] as IntArray
+                }
+            }
+            if (states == null || colors == null) {
+                return
+            }
+        } catch (e: java.lang.Exception) {
+            throw RuntimeException("Something wrong happened when parseing thumb selector color.")
+        }
+        if (states.size == 1) {
+            mUnselectedTextsColor = colors[0]
+            mSelectedTextsColor = mUnselectedTextsColor
+            mHoveredTextColor = mUnselectedTextsColor
+        } else if (states.size == 3) {
+            for (i in states.indices) {
+                val attr = states[i]
+                if (attr.isEmpty()) { //didn't have state,so just get color.
+                    mUnselectedTextsColor = colors[i]
+                    continue
+                }
+                when (attr[0]) {
+                    android.R.attr.state_selected -> mSelectedTextsColor = colors[i]
+                    android.R.attr.state_hovered -> mHoveredTextColor = colors[i]
+                    else -> throw java.lang.IllegalArgumentException("the selector color file you set for the argument: isb_tick_texts_color is in wrong format.")
+                }
+            }
+        } else {
+            //the color selector file was set by a wrong format , please see above to correct.
+            throw java.lang.IllegalArgumentException("the selector color file you set for the argument: isb_tick_texts_color is in wrong format.")
+        }
     }
 
     private fun initTextsTypeface(typeface: Int, defaultTypeface: Typeface?) {
@@ -456,8 +517,13 @@ class IndicatorSeekBar : View {
         mTickTextsArr = arrayOfNulls(mTicksCount)
         for (i in 0 until mTickMarksX!!.size) {
             if (mShowTickText) {
-                mTickTextsArr!![i] = if (i % 2 == 0) getTickTextByPosition(i) else ""
-                mTextPaint.getTextBounds(mTickTextsArr!![i], 0, mTickTextsArr!![i]!!.length, mRect)
+                mTickTextsArr!![i] = getTickTextByPosition(i)
+                mTextPaint.getTextBounds(
+                    mTickTextsArr!![i]!!.tickText,
+                    0,
+                    mTickTextsArr!![i]!!.tickText.length,
+                    mRect
+                )
                 mTickTextsWidth!![i] = mRect.width().toFloat()
                 mTextCenterX!![i] = mPaddingLeft + mSeekBlockLength * i
             }
@@ -465,14 +531,22 @@ class IndicatorSeekBar : View {
         }
     }
 
-    private fun getTickTextByPosition(index: Int): String {
-        if (mTickTextsCustomArray == null) return getProgressString(mProgressArr!![index])
-        if (index < mTickTextsCustomArray!!.length) return mTickTextsCustomArray!![index].toString()
-        return ""
+    private fun getTickTextByPosition(index: Int): Indicator {
+//        if (mTickTextsCustomArray == null) return getProgressString(mProgressArr!![index])
+//        if (index < mTickTextsCustomArray!!.length) return mTickTextsCustomArray!![index].toString()
+//        return ""
+        return getProgressString(mProgressArr!![index])
     }
 
-    private fun getProgressString(progress: Float): String {
-        return progress.roundToInt().toString()
+    private fun getProgressString(progress: Float): Indicator {
+        if (progress % 1F == 0F) return Indicator().apply {
+            tickText = progress.roundToInt().toString()
+            isInteger = true
+        }
+        return Indicator().apply {
+            tickText = progress.toString()
+            isInteger = false
+        }
     }
 
     private fun getClosestIndex(): Int {
@@ -525,7 +599,7 @@ class IndicatorSeekBar : View {
             } else {
                 mStockPaint.color = getRightSideTickColor()
             }
-            if (mTickMarksDrawable != null) {
+            if (mTickMarksDrawable != null && mTickTextsArr!![i]!!.isInteger) {
                 if (mSelectTickMarksBitmap == null || mUnselectTickMarksBitmap == null)
                     initTickMarksBitmap()
                 require(!(mSelectTickMarksBitmap == null || mUnselectTickMarksBitmap == null)) {
@@ -549,6 +623,7 @@ class IndicatorSeekBar : View {
                 }
                 continue
             }
+
             when (mShowTickMarksType) {
                 TickMarkType.OVAL -> {
                     canvas.drawCircle(
@@ -599,8 +674,52 @@ class IndicatorSeekBar : View {
 
     private fun getRightSideTickColor(): Int = mUnSelectedTickMarksColor
 
+    private fun getLeftSideTickOddColor(): Int = mSelectedTickMarksOddColor
+
+    private fun getRightSideTickOddColor(): Int = mUnSelectedTickMarksOddColor
+
     private fun initTickMarksBitmap() {
-        //
+        if (mTickMarksDrawable is StateListDrawable) {
+            val listDrawable = mTickMarksDrawable as StateListDrawable
+            try {
+                val aClass: Class<out StateListDrawable> = listDrawable.javaClass
+                val getStateCount = aClass.getMethod("getStateCount")
+                val stateCount = getStateCount.invoke(listDrawable) as Int
+                if (stateCount == 2) {
+                    val getStateSet = aClass.getMethod("getStateSet", Int::class.javaPrimitiveType)
+                    val getStateDrawable = aClass.getMethod(
+                        "getStateDrawable",
+                        Int::class.javaPrimitiveType
+                    )
+                    for (i in 0 until stateCount) {
+                        val stateSet = getStateSet.invoke(listDrawable, i) as IntArray
+                        if (stateSet.isNotEmpty()) {
+                            mSelectTickMarksBitmap =
+                                if (stateSet[0] == android.R.attr.state_selected) {
+                                    val stateDrawable =
+                                        getStateDrawable.invoke(listDrawable, i) as Drawable
+                                    getDrawBitmap(stateDrawable, false)
+                                } else {
+                                    //please check your selector drawable's format, please see above to correct.
+                                    throw java.lang.IllegalArgumentException("the state of the selector TickMarks drawable is wrong!")
+                                }
+                        } else {
+                            val stateDrawable = getStateDrawable.invoke(listDrawable, i) as Drawable
+                            mUnselectTickMarksBitmap = getDrawBitmap(stateDrawable, false)
+                        }
+                    }
+                } else {
+                    //please check your selector drawable's format, please see above to correct.
+                    throw java.lang.IllegalArgumentException("the format of the selector TickMarks drawable is wrong!")
+                }
+            } catch (e: Exception) {
+                mUnselectTickMarksBitmap = getDrawBitmap(mTickMarksDrawable!!, false)
+                mSelectTickMarksBitmap = mUnselectTickMarksBitmap
+            }
+        } else {
+            mUnselectTickMarksBitmap = getDrawBitmap(mTickMarksDrawable!!, false)
+            mSelectTickMarksBitmap = mUnselectTickMarksBitmap
+        }
     }
 
     private fun getLeftSideTrackSize(): Int = mProgressTrackSize
@@ -611,38 +730,45 @@ class IndicatorSeekBar : View {
         if (mTickTextsArr!!.isEmpty()) return
         val thumbPosFloat = getThumbPosOnTickFloat()
         for (i in mTickTextsArr!!.indices) {
-            if (i == getThumbPosOnTick() && i == thumbPosFloat.toInt()) {
-                mTextPaint.color = mHoveredTextColor
-            } else if (i < thumbPosFloat) {
-                mTextPaint.color = getLeftSideTickTextsColor()
-            } else {
-                mTextPaint.color = getRightSideTickTextsColor()
-            }
-            when (i) {
-                0 -> {
-                    canvas.drawText(
-                        mTickTextsArr!![i]!!,
-                        mTextCenterX!![i] + mTickTextsWidth!![i] / 2F,
-                        mTickTextY,
-                        mTextPaint
-                    )
+            if (mTickTextsArr!![i]!!.isInteger) {
+                if (i == getThumbPosOnTick() && i == thumbPosFloat.roundToInt()) {
+                    mTextPaint.color = mSelectedTextsColor
+                } else if (i < thumbPosFloat) {
+                    mTextPaint.color = getLeftSideTickTextsColor()
+                } else {
+                    mTextPaint.color = getRightSideTickTextsColor()
                 }
-                mTickTextsArr!!.size - 1 -> {
-                    canvas.drawText(
-                        mTickTextsArr!![i]!!,
-                        mTextCenterX!![i] - mTickTextsWidth!![i] / 2.0F,
-                        mTickTextY,
-                        mTextPaint
-                    )
-                }
-                else -> {
-                    canvas.drawText(mTickTextsArr!![i]!!, mTextCenterX!![i], mTickTextY, mTextPaint)
+                when (i) {
+                    0 -> {
+                        canvas.drawText(
+                            mTickTextsArr!![i]!!.tickText,
+                            mTextCenterX!![i] + mTickTextsWidth!![i] / 2F,
+                            mTickTextY,
+                            mTextPaint
+                        )
+                    }
+                    mTickTextsArr!!.size - 1 -> {
+                        canvas.drawText(
+                            mTickTextsArr!![i]!!.tickText,
+                            mTextCenterX!![i] - mTickTextsWidth!![i] / 2.0F,
+                            mTickTextY,
+                            mTextPaint
+                        )
+                    }
+                    else -> {
+                        canvas.drawText(
+                            mTickTextsArr!![i]!!.tickText,
+                            mTextCenterX!![i],
+                            mTickTextY,
+                            mTextPaint
+                        )
+                    }
                 }
             }
         }
     }
 
-    private fun getLeftSideTickTextsColor(): Int = mSelectedTextsColor
+    private fun getLeftSideTickTextsColor(): Int = mUnselectedTextsColor
 
     private fun getRightSideTickTextsColor(): Int = mUnselectedTextsColor
 
@@ -750,8 +876,8 @@ class IndicatorSeekBar : View {
     private fun refreshSeekBar(event: MotionEvent) {
         refreshThumbCenterXByProgress(calculateProgress(calculateTouchX(adjustTouchX(event))))
         setSeekListener(true)
-        invalidate()
         updateIndicator()
+        invalidate()
     }
 
     private fun calculateProgress(touchX: Float): Float {
@@ -789,7 +915,7 @@ class IndicatorSeekBar : View {
         if (mTicksCount > 2) {
             val rawThumbPos = getThumbPosOnTick()
             if (mShowTickText && !mTickTextsArr.isNullOrEmpty()) {
-                mSeekParams!!.tickText = mTickTextsArr!![rawThumbPos]
+                mSeekParams!!.tickText = mTickTextsArr!![rawThumbPos]!!.tickText
             }
             mSeekParams!!.thumbPosition = rawThumbPos
         }
@@ -805,14 +931,6 @@ class IndicatorSeekBar : View {
     }
 
     private fun updateIndicator() {
-        if (mIndicatorStayAlways) {
-            updateStayIndicator()
-        } else {
-
-        }
-    }
-
-    private fun updateStayIndicator() {
 
     }
 

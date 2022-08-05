@@ -1,6 +1,7 @@
 package com.example.exoplayerdemo.seekbar
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
@@ -32,12 +33,18 @@ class IndicatorSeekBarBuilder(val context: Context) {
     var tickMarksColor = Color.parseColor("#FF4081")
     var tickMarksSize = 0
     var tickMarksDrawable: Drawable? = null
+    var showTickMarksOddType = TickMarkType.NONE
+    var tickMarksOddColor = Color.parseColor("#FF4081")
+    var tickMarksOddSize = 0
+    var tickMarksOddDrawable: Drawable? = null
+    var tickTextsColorStateList: ColorStateList? = null
 
     init {
         this.indicatorTextSize = SizeUtils.sp2px(context, 14F)
         this.trackBackgroundSize = SizeUtils.sp2px(context, 2F)
         this.trackProgressSize = SizeUtils.sp2px(context, 2F)
         this.tickMarksSize = SizeUtils.sp2px(context, 10F)
+        this.tickMarksOddSize = SizeUtils.sp2px(context, 10F)
         this.tickTextsSize = SizeUtils.sp2px(context, 13F)
         this.thumbSize = SizeUtils.sp2px(context, 14F)
     }

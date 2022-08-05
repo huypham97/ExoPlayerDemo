@@ -22,7 +22,7 @@
         <attr name="isb_track_background_color" format="color|reference" />
         <attr name="isb_track_progress_size" format="dimension|reference" />
         <attr name="isb_track_progress_color" format="color|reference" />
-        <attr name="isb_track_rounded_corners" format="dimension|reference" />
+        <attr name="isb_track_rounded_corners" format="boolean" />
         <attr name="isb_thumb_size" format="dimension|reference" />
         <attr name="isb_thumb_color" format="color|reference" />
         <attr name="isb_thumb_drawable" format="reference" />
@@ -31,6 +31,15 @@
         <attr name="isb_tick_marks_size" format="dimension|reference" />
         <attr name="isb_tick_marks_drawable" format="reference" />
         <attr name="isb_show_tick_marks_type">
+            <enum name="none" value="0" />
+            <enum name="oval" value="1" />
+            <enum name="square" value="2" />
+            <enum name="divider" value="3" />
+        </attr>
+        <attr name="isb_tick_marks_odd_color" format="color|reference" />
+        <attr name="isb_tick_marks_odd_size" format="dimension|reference" />
+        <attr name="isb_tick_marks_odd_drawable" format="reference" />
+        <attr name="isb_show_tick_marks_odd_type">
             <enum name="none" value="0" />
             <enum name="oval" value="1" />
             <enum name="square" value="2" />
